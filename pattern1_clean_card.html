@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>習慣レポート - Pattern 1</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap');
+    body { font-family: 'Noto Sans JP', sans-serif; }
+    .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .habit-done { background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%); }
+    .habit-skip { background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf0 100%); }
+    .score-ring {
+      background: conic-gradient(#6366f1 0% 80%, #e5e7eb 80% 100%);
+    }
+    .pulse-dot { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+  <div class="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
+
+    <!-- ヘッダー -->
+    <div class="gradient-bg px-6 pt-8 pb-10 text-white relative">
+      <div class="flex items-center justify-between mb-1">
+        <span class="text-xs font-medium opacity-80 tracking-widest uppercase">Daily Habit Report</span>
+        <span class="bg-white/20 text-white text-xs font-bold px-3 py-1 rounded-full">🌅 朝7:00</span>
+      </div>
+      <h1 class="text-2xl font-black mt-2">4月4日(土)<br>の振り返り</h1>
+      <p class="text-sm opacity-75 mt-1">昨日の努力、お疲れ様でした！</p>
+
+      <!-- スコアバッジ -->
+      <div class="absolute -bottom-8 right-6 bg-white rounded-2xl shadow-xl px-5 py-3 text-center">
+        <p class="text-xs text-gray-400 font-medium">達成スコア</p>
+        <p class="text-4xl font-black text-indigo-600">80<span class="text-lg text-gray-400">%</span></p>
+        <div class="flex justify-center gap-0.5 mt-1">
+          <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+          <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+          <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+          <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+          <span class="w-2 h-2 rounded-full bg-gray-200"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 習慣リスト -->
+    <div class="px-5 pt-14 pb-2">
+      <h2 class="text-xs font-bold text-gray-400 tracking-widest uppercase mb-3">習慣チェック</h2>
+
+      <!-- 筋トレ -->
+      <div class="habit-done rounded-2xl p-4 mb-3 flex items-center gap-4">
+        <div class="text-3xl">💪</div>
+        <div class="flex-1">
+          <div class="flex items-center justify-between">
+            <p class="font-bold text-gray-700 text-sm">筋トレ</p>
+            <span class="text-xs bg-emerald-500 text-white font-bold px-2 py-0.5 rounded-full">完了</span>
+          </div>
+          <p class="text-xs text-gray-500 mt-0.5">胸・肩トレーニング / 45分</p>
+          <div class="w-full bg-white/60 rounded-full h-1.5 mt-2">
+            <div class="bg-emerald-500 h-1.5 rounded-full" style="width: 90%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ジャーナル -->
+      <div class="habit-done rounded-2xl p-4 mb-3 flex items-center gap-4">
+        <div class="text-3xl">📓</div>
+        <div class="flex-1">
+          <div class="flex items-center justify-between">
+            <p class="font-bold text-gray-700 text-sm">ジャーナル</p>
+            <span class="text-xs bg-emerald-500 text-white font-bold px-2 py-0.5 rounded-full">完了</span>
+          </div>
+          <p class="text-xs text-gray-500 mt-0.5">感謝・目標・気づき記録 / 20分</p>
+          <div class="w-full bg-white/60 rounded-full h-1.5 mt-2">
+            <div class="bg-emerald-500 h-1.5 rounded-full" style="width: 100%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 瞑想 -->
+      <div class="habit-done rounded-2xl p-4 mb-3 flex items-center gap-4">
+        <div class="text-3xl">🧘</div>
+        <div class="flex-1">
+          <div class="flex items-center justify-between">
+            <p class="font-bold text-gray-700 text-sm">瞑想</p>
+            <span class="text-xs bg-emerald-500 text-white font-bold px-2 py-0.5 rounded-full">完了</span>
+          </div>
+          <p class="text-xs text-gray-500 mt-0.5">マインドフルネス瞑想 / 15分</p>
+          <div class="w-full bg-white/60 rounded-full h-1.5 mt-2">
+            <div class="bg-emerald-500 h-1.5 rounded-full" style="width: 75%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 勉強 -->
+      <div class="habit-done rounded-2xl p-4 mb-3 flex items-center gap-4">
+        <div class="text-3xl">📚</div>
+        <div class="flex-1">
+          <div class="flex items-center justify-between">
+            <p class="font-bold text-gray-700 text-sm">勉強</p>
+            <span class="text-xs bg-emerald-500 text-white font-bold px-2 py-0.5 rounded-full">完了</span>
+          </div>
+          <p class="text-xs text-gray-500 mt-0.5">マーケティング学習 / 60分</p>
+          <div class="w-full bg-white/60 rounded-full h-1.5 mt-2">
+            <div class="bg-emerald-500 h-1.5 rounded-full" style="width: 100%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- イメージング（未実施） -->
+      <div class="habit-skip rounded-2xl p-4 mb-3 flex items-center gap-4 border border-dashed border-gray-300">
+        <div class="text-3xl opacity-40">🌟</div>
+        <div class="flex-1">
+          <div class="flex items-center justify-between">
+            <p class="font-bold text-gray-400 text-sm">イメージング</p>
+            <span class="text-xs bg-gray-300 text-gray-500 font-bold px-2 py-0.5 rounded-full">スキップ</span>
+          </div>
+          <p class="text-xs text-gray-400 mt-0.5">未実施</p>
+          <div class="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+            <div class="bg-gray-300 h-1.5 rounded-full" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- フィードバックセクション -->
+    <div class="px-5 pb-6">
+      <div class="bg-indigo-50 border border-indigo-100 rounded-2xl p-4">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-lg">🤖</span>
+          <p class="text-xs font-bold text-indigo-700 tracking-wide">AIフィードバック</p>
+        </div>
+        <p class="text-xs text-gray-600 leading-relaxed">
+          4/5習慣を完了、素晴らしい一日でした！<br>
+          筋トレ・勉強の高い達成度は目標達成の強い土台になっています。<br><br>
+          <span class="font-bold text-indigo-600">💡 今日の改善ポイント：</span><br>
+          イメージングは「就寝前5分」にスケジュール固定すると継続しやすくなります。視覚化で脳が目標を具体化し、潜在意識への刷り込みが強化されます。
+        </p>
+      </div>
+
+      <!-- 連続記録 -->
+      <div class="mt-3 flex gap-2">
+        <div class="flex-1 bg-amber-50 rounded-xl p-3 text-center border border-amber-100">
+          <p class="text-xl font-black text-amber-500">🔥 12</p>
+          <p class="text-xs text-amber-600 font-medium">日連続</p>
+        </div>
+        <div class="flex-1 bg-purple-50 rounded-xl p-3 text-center border border-purple-100">
+          <p class="text-xl font-black text-purple-500">📈 92</p>
+          <p class="text-xs text-purple-600 font-medium">週間スコア</p>
+        </div>
+        <div class="flex-1 bg-green-50 rounded-xl p-3 text-center border border-green-100">
+          <p class="text-xl font-black text-green-500">⭐ A</p>
+          <p class="text-xs text-green-600 font-medium">今週ランク</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- フッター -->
+    <div class="bg-gray-50 px-5 py-3 text-center border-t border-gray-100">
+      <p class="text-xs text-gray-400">習慣内容自動報告分析ツール • 毎朝7:00配信</p>
+    </div>
+
+  </div>
+</body>
+</html>
