@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>習慣レポート</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { font-family: 'Noto Sans JP', 'Hiragino Sans', sans-serif; }
+    .gradient-header { background: linear-gradient(135deg, #6366f1 0%, #7c3aed 100%); }
+    .card-root { width: 390px; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-6">
+
+  <div id="card" class="card-root bg-white rounded-3xl shadow-2xl overflow-hidden"></div>
+
+  <script>
+    // ============================================================
+    // データ定義（毎日ここを差し替えるだけで全体が更新される）
+    // ============================================================
+    const report = {
+      date: "4月4日(土)",
+      greeting: "昨日の努力、お疲れ様でした！",
+      score: 80,         // 達成率（%）
+      streak: 12,        // 連続達成日数
+      weeklyScore: 92,   // 週間スコア
+      weeklyRank: "A",   // 今週ランク
+
+      habits: [
+        { emoji: "💪", name: "筋トレ",       detail: "胸・肩 / 45分",         status: "done",  progress: 90 },
+        { emoji: "📓", name: "ジャーナル",   detail: "感謝・目標・気づき / 20分", status: "done",  progress: 100 },
+        { emoji: "🧘", name: "瞑想",         detail: "マインドフルネス / 15分",  status: "done",  progress: 75 },
+        { emoji: "📚", name: "勉強",         detail: "マーケティング / 60分",    status: "done",  progress: 100 },
+        { emoji: "🌟", name: "イメージング", detail: "未実施",                  status: "skip",  progress: 0  },
+      ],
+
+      feedback: {
+        headline: "4/5達成！着実に積み上がっています",
+        points: [
+          "筋トレ・勉強の達成度が高く、今週の週間スコアは過去最高水準",
+          "瞑想の集中度は75%。深い呼吸を意識するとさらに上がります"
+        ],
+        action: "今日の action ▶ 瞑想直後の5分にイメージングをセット。就寝前でも可"
+      },
+
+      todayMessage: "今日も「1つ1つ丁寧に」。その積み重ねが未来を変えます 🚀"
+    };
+
+    // ============================================================
+    // レンダリング
+    // ============================================================
+    const doneCount = report.habits.filter(h => h.status === "done").length;
+
+    const habitHTML = report.habits.map(h => {
+      if (h.status === "done") {
+        return `
+          <li class="flex items-center gap-3 bg-indigo-50 rounded-2xl p-3">
+            <div class="text-2xl w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm shrink-0" aria-hidden="true">${h.emoji}</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-sm font-bold text-gray-800 truncate">${h.name}</p>
+                <span class="text-xs bg-emerald-500 text-white font-bold px-2 py-0.5 rounded-full shrink-0">完了</span>
+              </div>
+              <p class="text-xs text-gray-500 mt-0.5 truncate">${h.detail}</p>
+              <div role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${h.progress}"
+                   class="w-full bg-indigo-100 rounded-full mt-2" style="height:5px;">
+                <div class="bg-indigo-500 rounded-full" style="height:5px; width:${h.progress}%;"></div>
+              </div>
+            </div>
+          </li>`;
+      } else {
+        return `
+          <li class="flex items-center gap-3 bg-gray-50 rounded-2xl p-3 border border-dashed border-gray-200">
+            <div class="text-2xl w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm shrink-0 opacity-30" aria-hidden="true">${h.emoji}</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-sm font-bold text-gray-400 truncate">${h.name}</p>
+                <span class="text-xs bg-gray-200 text-gray-500 font-bold px-2 py-0.5 rounded-full shrink-0">スキップ</span>
+              </div>
+              <p class="text-xs text-gray-400 mt-0.5">${h.detail}</p>
+              <div role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+                   class="w-full bg-gray-200 rounded-full mt-2" style="height:5px;">
+                <div class="bg-gray-300 rounded-full" style="height:5px; width:0%;"></div>
+              </div>
+            </div>
+          </li>`;
+      }
+    }).join("");
+
+    const pointsHTML = report.feedback.points.map(p =>
+      `<li class="flex gap-2 text-xs text-gray-600"><span class="text-indigo-400 shrink-0">•</span><span>${p}</span></li>`
+    ).join("");
+
+    // 週間ドット（例：今週7日分を固定表示、最終日は未来なので灰色）
+    const weekDots = ["月","火","水","木","金","土","日"].map((d, i) => {
+      const filled = i < 6 ? (i === 2 || i === 5 ? "bg-amber-300" : "bg-indigo-400") : "bg-gray-200";
+      return `<div class="flex flex-col items-center gap-1">
+        <div class="w-6 h-6 rounded-full ${filled}"></div>
+        <span class="text-xs text-gray-400">${d}</span>
+      </div>`;
+    }).join("");
+
+    document.getElementById("card").innerHTML = `
+      <!-- ヘッダー -->
+      <header class="gradient-header px-6 pt-7 pb-12 text-white relative">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-xs font-medium opacity-70 tracking-widest uppercase">Daily Habit Report</span>
+          <span class="bg-white/20 text-white text-xs font-bold px-3 py-1 rounded-full">🌅 朝7:00</span>
+        </div>
+        <h1 class="text-2xl font-black leading-snug">${report.date}<br><span class="font-normal text-lg opacity-80">の振り返り</span></h1>
+        <p class="text-sm opacity-70 mt-1">${report.greeting}</p>
+
+        <!-- スコアバッジ（主役はパーセントのみ） -->
+        <div class="absolute -bottom-9 right-5 bg-white rounded-2xl shadow-xl px-5 py-3 text-center">
+          <p class="text-xs text-gray-400 font-medium">達成率</p>
+          <p class="text-4xl font-black text-indigo-600 leading-none mt-0.5">${report.score}<span class="text-base text-gray-400 font-normal">%</span></p>
+          <p class="text-xs text-gray-400 mt-1">${doneCount}/${report.habits.length} 完了</p>
+        </div>
+      </header>
+
+      <!-- 今週の達成ドット -->
+      <section class="px-5 pt-14 pb-4 border-b border-gray-100">
+        <p class="text-xs font-bold text-gray-400 tracking-widest uppercase mb-3">今週の達成状況</p>
+        <div class="flex justify-between items-end">${weekDots}</div>
+        <div class="flex gap-3 mt-2.5">
+          <span class="flex items-center gap-1 text-xs text-gray-500"><span class="w-3 h-3 rounded-full bg-indigo-400 inline-block"></span>達成</span>
+          <span class="flex items-center gap-1 text-xs text-gray-500"><span class="w-3 h-3 rounded-full bg-amber-300 inline-block"></span>一部達成</span>
+          <span class="flex items-center gap-1 text-xs text-gray-500"><span class="w-3 h-3 rounded-full bg-gray-200 inline-block"></span>未来</span>
+        </div>
+      </section>
+
+      <!-- 習慣リスト -->
+      <main class="px-5 pt-5 pb-3">
+        <p class="text-xs font-bold text-gray-400 tracking-widest uppercase mb-3">習慣チェック</p>
+        <ul class="space-y-2.5">${habitHTML}</ul>
+      </main>
+
+      <!-- AIフィードバック -->
+      <section class="px-5 pb-5">
+        <div class="bg-indigo-50 border border-indigo-100 rounded-2xl p-4">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="text-base" aria-hidden="true">🤖</span>
+            <p class="text-xs font-bold text-indigo-600 tracking-wide uppercase">AI Feedback</p>
+          </div>
+
+          <!-- 結論（大きく・一目で読める） -->
+          <p class="text-sm font-black text-gray-800 leading-snug mb-3">${report.feedback.headline}</p>
+
+          <!-- 箇条書き2点 -->
+          <ul class="space-y-1.5 mb-3">${pointsHTML}</ul>
+
+          <!-- 今日の1アクション -->
+          <div class="bg-indigo-600 text-white rounded-xl px-3 py-2.5">
+            <p class="text-xs font-bold leading-relaxed">${report.feedback.action}</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 統計 -->
+      <section class="px-5 pb-5 grid grid-cols-3 gap-2">
+        <div class="bg-amber-50 border border-amber-100 rounded-xl p-3 text-center">
+          <p class="text-xl font-black text-amber-500">🔥${report.streak}</p>
+          <p class="text-xs text-gray-500 font-medium mt-0.5">日連続</p>
+        </div>
+        <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-3 text-center">
+          <p class="text-xl font-black text-indigo-500">${report.weeklyScore}</p>
+          <p class="text-xs text-gray-500 font-medium mt-0.5">週間スコア</p>
+        </div>
+        <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-center">
+          <p class="text-xl font-black text-emerald-500">⭐${report.weeklyRank}</p>
+          <p class="text-xs text-gray-500 font-medium mt-0.5">今週ランク</p>
+        </div>
+      </section>
+
+      <!-- 今日への一言（毎日開封する動機） -->
+      <section class="mx-5 mb-5 bg-gray-900 rounded-2xl px-4 py-3">
+        <p class="text-xs text-gray-400 font-bold mb-1 tracking-widest uppercase">Today's Message</p>
+        <p class="text-xs text-white leading-relaxed font-medium">${report.todayMessage}</p>
+      </section>
+
+      <!-- フッター -->
+      <footer class="bg-gray-50 border-t border-gray-100 px-5 py-3 text-center">
+        <p class="text-xs text-gray-400">習慣内容自動報告分析ツール • 毎朝7:00配信</p>
+      </footer>
+    `;
+  </script>
+</body>
+</html>
