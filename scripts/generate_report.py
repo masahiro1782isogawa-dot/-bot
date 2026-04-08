@@ -1,12 +1,12 @@
 """
-習慣データを集計し、OpenAI で AIフィードバックと名言を生成するモジュール。
+習慣データを集計し、Google Gemini で AIフィードバックと名言を生成するモジュール。
 """
 
 import json
 import os
 from datetime import date, timedelta
 
-from openai import OpenAI
+import google.generativeai as genai
 
 WEEKDAY_JA = ["月", "火", "水", "木", "金", "土", "日"]
 
@@ -109,8 +109,9 @@ def _format_date_ja(d: date) -> str:
 
 
 def _generate_ai_feedback(habits: list[dict], score: int, streak: int) -> dict:
-    """OpenAI GPT-4o でフィードバック JSON を生成して返す。"""
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    """Google Gemini でフィードバック JSON を生成して返す。"""
+    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+    model = genai.GenerativeModel("gemini-1.5-flash")
 
     habit_summary = "\n".join(
         f"- {h['emoji']} {h['name']}: {'✓完了' if h['status'] == 'done' else 'スキップ'} ({h['detail']})"
@@ -119,36 +120,31 @@ def _generate_ai_feedback(habits: list[dict], score: int, streak: int) -> dict:
     done_count = sum(1 for h in habits if h["status"] == "done")
     total = len(habits)
 
-    system_prompt = (
+    prompt = (
         "あなたは習慣コーチです。ユーザーの昨日の習慣達成状況を分析し、"
         "日本語で励ましと具体的なアドバイスを提供してください。"
-        "回答は必ず以下のJSON形式のみで返してください（マークダウン不要）:\n"
+        "回答は必ず以下のJSON形式のみで返してください（マークダウン・コードブロック不要）:\n"
         "{\n"
         '  "headline": "（達成状況を端的に表す1文、20文字以内）",\n'
         '  "points": ["（分析ポイント1文目、40文字以内）", "（分析ポイント2文目、40文字以内）"],\n'
         '  "action": "今日の action ▶ （具体的な1アクション、50文字以内）",\n'
         '  "quote": {"text": "（習慣・継続に関する名言）", "author": "（著者名）"}\n'
-        "}"
-    )
-
-    user_prompt = (
+        "}\n\n"
         f"昨日の習慣記録:\n{habit_summary}\n\n"
         f"達成率: {score}%（{done_count}/{total}完了）\n"
         f"連続達成日数: {streak}日"
     )
 
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.7,
-        max_tokens=600,
-        response_format={"type": "json_object"},
+    response = model.generate_content(
+        prompt,
+        generation_config=genai.GenerationConfig(
+            temperature=0.7,
+            max_output_tokens=600,
+            response_mime_type="application/json",
+        ),
     )
 
-    raw = response.choices[0].message.content
+    raw = response.text
     return json.loads(raw)
 
 
