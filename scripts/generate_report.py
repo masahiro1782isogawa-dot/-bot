@@ -6,7 +6,8 @@ import json
 import os
 from datetime import date, timedelta
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 WEEKDAY_JA = ["月", "火", "水", "木", "金", "土", "日"]
 
@@ -110,8 +111,7 @@ def _format_date_ja(d: date) -> str:
 
 def _generate_ai_feedback(habits: list[dict], score: int, streak: int) -> dict:
     """Google Gemini でフィードバック JSON を生成して返す。"""
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
     habit_summary = "\n".join(
         f"- {h['emoji']} {h['name']}: {'✓完了' if h['status'] == 'done' else 'スキップ'} ({h['detail']})"
@@ -135,9 +135,10 @@ def _generate_ai_feedback(habits: list[dict], score: int, streak: int) -> dict:
         f"連続達成日数: {streak}日"
     )
 
-    response = model.generate_content(
-        prompt,
-        generation_config=genai.GenerationConfig(
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(
             temperature=0.7,
             max_output_tokens=600,
             response_mime_type="application/json",
