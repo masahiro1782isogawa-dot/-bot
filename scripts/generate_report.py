@@ -4,6 +4,7 @@
 
 import json
 import os
+import time
 from datetime import date, timedelta
 
 from google import genai
@@ -135,18 +136,25 @@ def _generate_ai_feedback(habits: list[dict], score: int, streak: int) -> dict:
         f"連続達成日数: {streak}日"
     )
 
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=0.7,
-            max_output_tokens=600,
-            response_mime_type="application/json",
-        ),
-    )
-
-    raw = response.text
-    return json.loads(raw)
+    for attempt in range(3):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.7,
+                    max_output_tokens=600,
+                    response_mime_type="application/json",
+                ),
+            )
+            return json.loads(response.text)
+        except Exception as e:
+            if attempt < 2:
+                wait = 60 * (attempt + 1)
+                print(f"Gemini API エラー（{attempt + 1}回目）: {e}。{wait}秒後にリトライします...")
+                time.sleep(wait)
+            else:
+                raise
 
 
 def build_report_data(notion_data: dict, recent_days: list[dict]) -> dict:
