@@ -24,7 +24,7 @@ jobs:
           cache: 'pip'
 
       - name: Install Python dependencies
-        run: pip install -r requirements.txt
+        run: pip install --no-cache-dir -r requirements.txt
 
       - name: Install Playwright Chromium
         run: playwright install chromium --with-deps
