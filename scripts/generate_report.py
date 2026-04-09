@@ -157,7 +157,7 @@ def _generate_ai_feedback(habits: list[dict], score: int, streak: int) -> dict:
                 return result
             except Exception as e:
                 if attempt < 2:
-                    wait = 30 * (2 ** attempt)  # 30s → 60s（指数バックオフ）
+                    wait = 10 * (2 ** attempt)  # 10s → 20s（指数バックオフ）
                     print(f"Gemini API エラー（{model}, {attempt + 1}回目）: {e}。{wait}秒後にリトライ...")
                     time.sleep(wait)
                 else:

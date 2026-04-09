@@ -11,7 +11,7 @@ jobs:
   send-report:
     name: Generate & Send Habit Report
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
