@@ -111,7 +111,7 @@ def _format_date_ja(d: date) -> str:
 
 
 def _generate_ai_feedback(habits: list[dict], score: int, streak: int) -> dict:
-    """Google Gemini でフィードバック JSON を生成して返す。"""
+    """Google Gemini でフィードバック JSON を生成して返す。失敗時は静的フォールバックを返す。"""
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
     habit_summary = "\n".join(
@@ -136,25 +136,50 @@ def _generate_ai_feedback(habits: list[dict], score: int, streak: int) -> dict:
         f"連続達成日数: {streak}日"
     )
 
-    for attempt in range(3):
-        try:
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.7,
-                    max_output_tokens=600,
-                    response_mime_type="application/json",
-                ),
-            )
-            return json.loads(response.text)
-        except Exception as e:
-            if attempt < 2:
-                wait = 60 * (attempt + 1)
-                print(f"Gemini API エラー（{attempt + 1}回目）: {e}。{wait}秒後にリトライします...")
-                time.sleep(wait)
-            else:
-                raise
+    # モデルを優先順に試す（無料枠クォータが別プール）
+    models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"]
+
+    for model in models:
+        for attempt in range(3):
+            try:
+                print(f"Gemini API 呼び出し中（モデル: {model}, 試行: {attempt + 1}/3）...")
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.7,
+                        max_output_tokens=600,
+                        response_mime_type="application/json",
+                    ),
+                )
+                result = json.loads(response.text)
+                print(f"Gemini API 成功（モデル: {model}）")
+                return result
+            except Exception as e:
+                if attempt < 2:
+                    wait = 30 * (2 ** attempt)  # 30s → 60s（指数バックオフ）
+                    print(f"Gemini API エラー（{model}, {attempt + 1}回目）: {e}。{wait}秒後にリトライ...")
+                    time.sleep(wait)
+                else:
+                    print(f"Gemini API 失敗（モデル: {model} 全試行終了）: {e}")
+                    break  # 次のモデルへ
+
+    # 全モデル・全リトライ失敗時のフォールバック（ワークフローを止めない）
+    print("警告: Gemini API が全モデルで失敗しました。静的フィードバックで続行します。")
+    skip_names = [h["name"] for h in habits if h["status"] == "skip"]
+    skip_text = f"今日は{skip_names[0]}に再チャレンジしてみましょう。" if skip_names else "今日も習慣を続けましょう。"
+    return {
+        "headline": f"{done_count}/{total}完了、お疲れ様でした！",
+        "points": [
+            f"達成率{score}%、連続{streak}日継続中です。",
+            "毎日の積み重ねが大きな変化を生みます。",
+        ],
+        "action": f"今日の action ▶ {skip_text}",
+        "quote": {
+            "text": "私たちは繰り返し行うことの産物である。優秀さとは行為ではなく、習慣なのだ。",
+            "author": "アリストテレス",
+        },
+    }
 
 
 def build_report_data(notion_data: dict, recent_days: list[dict]) -> dict:
