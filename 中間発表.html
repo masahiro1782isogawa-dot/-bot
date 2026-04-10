@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>習慣レポート自動ツール｜中間発表</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { font-family: 'Noto Sans JP', 'Hiragino Sans', sans-serif; }
+
+    .flow-arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #94a3b8;
+      font-size: 1.5rem;
+      font-weight: 900;
+    }
+
+    .node-github { background: linear-gradient(135deg, #1e293b, #334155); }
+    .node-notion  { background: linear-gradient(135deg, #18181b, #3f3f46); }
+    .node-gemini  { background: linear-gradient(135deg, #1d4ed8, #4f46e5); }
+    .node-slack   { background: linear-gradient(135deg, #7c3aed, #a855f7); }
+    .node-github2 { background: linear-gradient(135deg, #0f172a, #1e293b); }
+
+    .status-done  { background: #d1fae5; color: #059669; border: 1px solid #6ee7b7; }
+    .status-warn  { background: #fef9c3; color: #b45309; border: 1px solid #fde68a; }
+    .status-todo  { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
+
+    .pulse-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #10b981;
+      animation: pulse-green 1.5s infinite;
+      display: inline-block;
+      margin-right: 6px;
+    }
+    @keyframes pulse-green {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.4); }
+    }
+
+    .warn-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #f59e0b;
+      animation: pulse-yellow 1.5s infinite;
+      display: inline-block;
+      margin-right: 6px;
+    }
+    @keyframes pulse-yellow {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.4); }
+    }
+
+    .card-hover {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .card-hover:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.12);
+    }
+
+    .flow-line {
+      height: 2px;
+      flex: 1;
+      background: linear-gradient(90deg, #cbd5e1, #94a3b8, #cbd5e1);
+    }
+
+    @media (max-width: 768px) {
+      .flow-container { flex-direction: column; }
+      .flow-arrow { transform: rotate(90deg); margin: 4px 0; }
+    }
+  </style>
+</head>
+<body style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%); min-height: 100vh; padding: 32px 16px;">
+
+  <div style="max-width: 960px; margin: 0 auto;">
+
+    <!-- ===== HEADER ===== -->
+    <div class="text-center mb-10">
+      <div class="inline-block bg-white/10 text-white text-xs font-bold px-4 py-1.5 rounded-full mb-4 tracking-widest uppercase">
+        🎓 AIスクール グループワーク 中間発表
+      </div>
+      <h1 class="text-3xl md:text-4xl font-black text-white leading-tight mb-3">
+        習慣レポート自動送信ツール
+      </h1>
+      <p class="text-slate-400 text-sm">Notion → GitHub → Gemini → Slack の完全自動化パイプライン</p>
+    </div>
+
+    <!-- ===== WHAT & WHY ===== -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
+
+      <!-- どんなツールか -->
+      <div class="bg-white/5 backdrop-blur rounded-3xl p-6 border border-white/10">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-xl">🔍</div>
+          <h2 class="text-white font-black text-base">どんなツールか？</h2>
+        </div>
+        <p class="text-slate-300 text-sm leading-relaxed">
+          昨日行った<strong class="text-emerald-400">努力・習慣を可視化</strong>して、毎朝 Slack に届けるツール。
+        </p>
+        <div class="mt-4 bg-emerald-900/20 border border-emerald-700/30 rounded-2xl px-4 py-3">
+          <p class="text-emerald-300 text-xs font-bold mb-1.5">具体的にできること</p>
+          <ul class="space-y-1.5">
+            <li class="flex gap-2 text-xs text-slate-300"><span class="text-emerald-400 shrink-0">▶</span>Notion の習慣記録を自動で取得・集計</li>
+            <li class="flex gap-2 text-xs text-slate-300"><span class="text-emerald-400 shrink-0">▶</span>Gemini が達成状況を評価しフィードバック生成</li>
+            <li class="flex gap-2 text-xs text-slate-300"><span class="text-emerald-400 shrink-0">▶</span>毎朝 7:00 に Slack へレポートカードを配信</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- なぜ作ったか -->
+      <div class="bg-white/5 backdrop-blur rounded-3xl p-6 border border-white/10">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-xl">💡</div>
+          <h2 class="text-white font-black text-base">なぜ作ったか？</h2>
+        </div>
+        <p class="text-slate-300 text-sm leading-relaxed mb-3">
+          昨日までの頑張りを朝から確認することで、<strong class="text-indigo-300">1日のやる気を高める</strong>のが狙いです。
+        </p>
+        <div class="bg-indigo-900/20 border border-indigo-700/30 rounded-2xl px-4 py-3">
+          <p class="text-indigo-300 text-xs font-bold mb-1.5">作った背景</p>
+          <p class="text-slate-400 text-xs leading-relaxed">
+            「面倒なことを自動化する」という点では必ずしも一致するツールではありませんが、
+            <span class="text-slate-300">「自動ツールを作ってみる」という挑戦として</span>、まず自分の生活に役立てそうなものをテーマに選びました。
+          </p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ===== ARCHITECTURE FLOW ===== -->
+    <div class="bg-white/5 backdrop-blur rounded-3xl p-6 md:p-8 mb-8 border border-white/10">
+      <h2 class="text-white font-black text-lg mb-6 flex items-center gap-2">
+        <span class="text-2xl">⚙️</span> システム構成
+      </h2>
+
+      <div class="flex flex-col md:flex-row items-center justify-between gap-3 flow-container">
+
+        <!-- Node 1: GitHub Trigger -->
+        <div class="node-github rounded-2xl p-4 w-full md:w-36 text-center card-hover shadow-lg border border-white/10">
+          <div class="text-3xl mb-2">⏰</div>
+          <div class="text-white font-black text-sm">GitHub</div>
+          <div class="text-slate-400 text-xs mt-1">Actions</div>
+          <div class="mt-2 bg-white/10 rounded-full text-xs text-slate-300 px-2 py-0.5">トリガー</div>
+          <div class="mt-1 text-xs text-emerald-400 font-bold">毎朝 7:00</div>
+        </div>
+
+        <div class="flow-arrow hidden md:flex flex-col items-center gap-1">
+          <div class="text-slate-500 text-xs mb-1">スケジュール</div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <div style="width:40px;height:2px;background:linear-gradient(90deg,#334155,#64748b);"></div>
+            <span style="color:#64748b;font-size:1.1rem;">▶</span>
+          </div>
+        </div>
+        <div class="flow-arrow md:hidden">↓</div>
+
+        <!-- Node 2: Notion Source -->
+        <div class="node-notion rounded-2xl p-4 w-full md:w-36 text-center card-hover shadow-lg border border-white/10">
+          <div class="text-3xl mb-2">📓</div>
+          <div class="text-white font-black text-sm">Notion</div>
+          <div class="text-slate-400 text-xs mt-1">Database</div>
+          <div class="mt-2 bg-white/10 rounded-full text-xs text-slate-300 px-2 py-0.5">ソース</div>
+          <div class="mt-1 text-xs text-slate-400 font-bold">習慣データ取得</div>
+        </div>
+
+        <div class="flow-arrow hidden md:flex flex-col items-center gap-1">
+          <div class="text-slate-500 text-xs mb-1">API取得</div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <div style="width:40px;height:2px;background:linear-gradient(90deg,#334155,#64748b);"></div>
+            <span style="color:#64748b;font-size:1.1rem;">▶</span>
+          </div>
+        </div>
+        <div class="flow-arrow md:hidden">↓</div>
+
+        <!-- Node 3: GitHub Processing -->
+        <div class="node-github2 rounded-2xl p-4 w-full md:w-36 text-center card-hover shadow-lg border border-white/10">
+          <div class="text-3xl mb-2">🔧</div>
+          <div class="text-white font-black text-sm">GitHub</div>
+          <div class="text-slate-400 text-xs mt-1">Actions</div>
+          <div class="mt-2 bg-white/10 rounded-full text-xs text-slate-300 px-2 py-0.5">処理</div>
+          <div class="mt-1 text-xs text-slate-400 font-bold">データ加工</div>
+        </div>
+
+        <div class="flow-arrow hidden md:flex flex-col items-center gap-1">
+          <div class="text-slate-500 text-xs mb-1">AI評価</div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <div style="width:40px;height:2px;background:linear-gradient(90deg,#334155,#64748b);"></div>
+            <span style="color:#64748b;font-size:1.1rem;">▶</span>
+          </div>
+        </div>
+        <div class="flow-arrow md:hidden">↓</div>
+
+        <!-- Node 4: Gemini -->
+        <div class="node-gemini rounded-2xl p-4 w-full md:w-36 text-center card-hover shadow-lg border border-white/10">
+          <div class="text-3xl mb-2">✨</div>
+          <div class="text-white font-black text-sm">Gemini</div>
+          <div class="text-slate-400 text-xs mt-1">AI評価</div>
+          <div class="mt-2 bg-white/10 rounded-full text-xs text-slate-300 px-2 py-0.5">AI</div>
+          <div class="mt-1 text-xs text-blue-300 font-bold">フィードバック生成</div>
+        </div>
+
+        <div class="flow-arrow hidden md:flex flex-col items-center gap-1">
+          <div class="text-slate-500 text-xs mb-1">送信</div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <div style="width:40px;height:2px;background:linear-gradient(90deg,#334155,#64748b);"></div>
+            <span style="color:#64748b;font-size:1.1rem;">▶</span>
+          </div>
+        </div>
+        <div class="flow-arrow md:hidden">↓</div>
+
+        <!-- Node 5: Slack -->
+        <div class="node-slack rounded-2xl p-4 w-full md:w-36 text-center card-hover shadow-lg border border-white/10">
+          <div class="text-3xl mb-2">💬</div>
+          <div class="text-white font-black text-sm">Slack</div>
+          <div class="text-slate-400 text-xs mt-1">通知</div>
+          <div class="mt-2 bg-white/10 rounded-full text-xs text-slate-300 px-2 py-0.5">配信</div>
+          <div class="mt-1 text-xs text-purple-300 font-bold">レポート受信</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ===== TWO COLUMN: STATUS + TIPS ===== -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+
+      <!-- 現状できていること -->
+      <div class="bg-white/5 backdrop-blur rounded-3xl p-6 border border-white/10">
+        <h2 class="text-white font-black text-lg mb-5 flex items-center gap-2">
+          <span class="text-2xl">✅</span> 現状できていること
+        </h2>
+        <ul class="space-y-3">
+          <li class="flex items-start gap-3">
+            <span class="status-done text-xs font-bold px-2 py-0.5 rounded-full mt-0.5 shrink-0">完成</span>
+            <div>
+              <p class="text-white text-sm font-bold">毎朝7時の自動配信システム</p>
+              <p class="text-slate-400 text-xs mt-0.5">GitHub Actions でのスケジュール実行が稼働中</p>
+            </div>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="status-done text-xs font-bold px-2 py-0.5 rounded-full mt-0.5 shrink-0">完成</span>
+            <div>
+              <p class="text-white text-sm font-bold">レポートカードの完成形デザイン</p>
+              <p class="text-slate-400 text-xs mt-0.5">TailwindCSS でモバイルファーストな UI を構築</p>
+            </div>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="status-done text-xs font-bold px-2 py-0.5 rounded-full mt-0.5 shrink-0">完成</span>
+            <div>
+              <p class="text-white text-sm font-bold">サブエージェントによる品質向上</p>
+              <p class="text-slate-400 text-xs mt-0.5">AI に評価させ出力クオリティを改善（1回）</p>
+            </div>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="status-todo text-xs font-bold px-2 py-0.5 rounded-full mt-0.5 shrink-0">未完</span>
+            <div>
+              <p class="text-white text-sm font-bold">出力のブレをコードで止める</p>
+              <p class="text-slate-400 text-xs mt-0.5">AIの出力揺らぎを固定ロジックで制御する実装</p>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- 3つのコツ進捗 -->
+      <div class="bg-white/5 backdrop-blur rounded-3xl p-6 border border-white/10">
+        <h2 class="text-white font-black text-lg mb-5 flex items-center gap-2">
+          <span class="text-2xl">🎯</span> 3つのコツ 進捗
+        </h2>
+        <div class="space-y-4">
+          <div class="rounded-2xl p-4 bg-emerald-900/30 border border-emerald-700/40">
+            <div class="flex items-center justify-between mb-1">
+              <p class="text-emerald-300 font-bold text-sm">① 完成図を先に作る</p>
+              <span class="status-done text-xs font-bold px-2 py-0.5 rounded-full">完了</span>
+            </div>
+            <p class="text-slate-400 text-xs">TailwindCSS でゴールイメージを実装</p>
+            <div class="mt-2 bg-emerald-900/50 rounded-full h-1.5">
+              <div class="bg-emerald-500 rounded-full h-1.5" style="width:100%"></div>
+            </div>
+          </div>
+          <div class="rounded-2xl p-4 bg-emerald-900/30 border border-emerald-700/40">
+            <div class="flex items-center justify-between mb-1">
+              <p class="text-emerald-300 font-bold text-sm">② サブエージェントに評価させる</p>
+              <span class="status-warn text-xs font-bold px-2 py-0.5 rounded-full">1回のみ</span>
+            </div>
+            <p class="text-slate-400 text-xs">評価回数を増やすことで品質がさらに向上する余地あり</p>
+            <div class="mt-2 bg-emerald-900/50 rounded-full h-1.5">
+              <div class="bg-yellow-400 rounded-full h-1.5" style="width:50%"></div>
+            </div>
+          </div>
+          <div class="rounded-2xl p-4 bg-red-900/20 border border-red-700/30">
+            <div class="flex items-center justify-between mb-1">
+              <p class="text-red-300 font-bold text-sm">③ ブレをコードで止める</p>
+              <span class="status-todo text-xs font-bold px-2 py-0.5 rounded-full">未着手</span>
+            </div>
+            <p class="text-slate-400 text-xs">AI依存の箇所をプログラムに置き換える実装が必要</p>
+            <div class="mt-2 bg-red-900/30 rounded-full h-1.5">
+              <div class="bg-red-500 rounded-full h-1.5" style="width:5%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== ISSUES ===== -->
+    <div class="bg-white/5 backdrop-blur rounded-3xl p-6 border border-white/10 mb-8">
+      <h2 class="text-white font-black text-lg mb-5 flex items-center gap-2">
+        <span class="text-2xl">⚠️</span> 課題・気づき
+      </h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        <!-- Bug: 日付ずれ -->
+        <div class="bg-orange-900/20 border border-orange-700/40 rounded-2xl p-4 card-hover">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xl">📅</span>
+            <span class="text-orange-300 font-black text-sm">バグ：日付のズレ</span>
+          </div>
+          <p class="text-slate-300 text-xs leading-relaxed">
+            昨日のレポートが届くはずが<strong class="text-orange-300">一昨日のデータ</strong>が届いてしまった。
+            日付フィルタリングのロジックに問題あり。
+          </p>
+          <div class="mt-3 bg-orange-900/30 rounded-xl px-3 py-2">
+            <p class="text-orange-200 text-xs font-bold">→ 日付取得・フィルタリング処理の見直しが必要</p>
+          </div>
+        </div>
+
+        <!-- Unintended Code Push -->
+        <div class="bg-red-900/20 border border-red-700/40 rounded-2xl p-4 card-hover">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xl">🤖</span>
+            <span class="text-red-300 font-black text-sm">意図せずコードが書かれた</span>
+          </div>
+          <p class="text-slate-300 text-xs leading-relaxed">
+            プランモードで相談していたら、いつの間にかGitHubに
+            <strong class="text-red-300">コードが書き込まれていた</strong>。
+            意図せず開発が進んでしまった。
+          </p>
+          <div class="mt-3 bg-red-900/30 rounded-xl px-3 py-2">
+            <p class="text-red-200 text-xs font-bold">→ AIとの協働における確認フローの整備が必要</p>
+          </div>
+        </div>
+
+        <!-- Output Stabilization -->
+        <div class="bg-yellow-900/20 border border-yellow-700/40 rounded-2xl p-4 card-hover">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xl">🔄</span>
+            <span class="text-yellow-300 font-black text-sm">出力の安定化</span>
+          </div>
+          <p class="text-slate-300 text-xs leading-relaxed">
+            AI が操作している箇所をプログラムに置き換える
+            <strong class="text-yellow-300">コードの書き換え</strong>が必要。
+            現状は AI の出力に依存しすぎている。
+          </p>
+          <div class="mt-3 bg-yellow-900/30 rounded-xl px-3 py-2">
+            <p class="text-yellow-200 text-xs font-bold">→ ロジック固定化 → 再現性の確保</p>
+          </div>
+        </div>
+
+        <!-- Sub-agent Quality -->
+        <div class="bg-blue-900/20 border border-blue-700/40 rounded-2xl p-4 card-hover">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xl">🔍</span>
+            <span class="text-blue-300 font-black text-sm">理解度・品質の不足</span>
+          </div>
+          <p class="text-slate-300 text-xs leading-relaxed">
+            サブエージェント評価が<strong class="text-blue-300">1回のみ</strong>のため品質保証が弱い。
+            また、細部のコードへの理解度がまだ不足している。
+          </p>
+          <div class="mt-3 bg-blue-900/30 rounded-xl px-3 py-2">
+            <p class="text-blue-200 text-xs font-bold">→ 評価回数増加 + コードリーディング強化</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ===== DEMO LINK ===== -->
+    <div class="bg-gradient-to-r from-emerald-900/40 to-teal-900/40 backdrop-blur rounded-3xl p-6 border border-emerald-700/40 mb-8">
+      <h2 class="text-white font-black text-lg mb-4 flex items-center gap-2">
+        <span class="text-2xl">🖥️</span> 成果物デモ
+      </h2>
+      <p class="text-slate-400 text-sm mb-4">
+        TailwindCSS で作成したレポートカードの完成形。サブエージェントによる評価を経て品質を向上させたデザインです。
+      </p>
+      <a
+        href="pattern1_improved.html"
+        target="_blank"
+        class="inline-flex items-center gap-3 bg-emerald-500 hover:bg-emerald-400 text-white font-black px-6 py-3 rounded-2xl transition-all duration-200 hover:scale-105 shadow-lg shadow-emerald-900/50"
+      >
+        <span class="text-xl">📱</span>
+        レポートカード完成形を見る
+        <span class="text-sm opacity-80">（pattern1_improved.html）</span>
+        <span class="text-lg">→</span>
+      </a>
+    </div>
+
+    <!-- ===== NEXT STEPS ===== -->
+    <div class="bg-white/5 backdrop-blur rounded-3xl p-6 border border-white/10 mb-8">
+      <h2 class="text-white font-black text-lg mb-5 flex items-center gap-2">
+        <span class="text-2xl">🚀</span> 今後の改善ロードマップ
+      </h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="text-center">
+          <div class="w-10 h-10 rounded-full bg-red-900/50 border border-red-700/50 flex items-center justify-center text-red-300 font-black text-lg mx-auto mb-2">1</div>
+          <p class="text-white font-bold text-sm mb-1">日付バグの修正</p>
+          <p class="text-slate-400 text-xs">正確な前日データ取得ロジックの実装</p>
+        </div>
+        <div class="text-center">
+          <div class="w-10 h-10 rounded-full bg-yellow-900/50 border border-yellow-700/50 flex items-center justify-center text-yellow-300 font-black text-lg mx-auto mb-2">2</div>
+          <p class="text-white font-bold text-sm mb-1">AI依存箇所のコード化</p>
+          <p class="text-slate-400 text-xs">出力の安定化・再現性の確保</p>
+        </div>
+        <div class="text-center">
+          <div class="w-10 h-10 rounded-full bg-blue-900/50 border border-blue-700/50 flex items-center justify-center text-blue-300 font-black text-lg mx-auto mb-2">3</div>
+          <p class="text-white font-bold text-sm mb-1">評価ループの強化</p>
+          <p class="text-slate-400 text-xs">サブエージェント評価を複数回に増やしクオリティ向上</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== FOOTER ===== -->
+    <div class="text-center text-slate-600 text-xs pb-4">
+      習慣内容自動報告分析ツール｜AIスクール グループワーク 中間発表｜2026年4月
+    </div>
+
+  </div>
+</body>
+</html>
