@@ -16,8 +16,16 @@ Notionデータベース列構造（推奨）:
 """
 
 import os
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from notion_client import Client
+
+# GitHub Actions は UTC 動作のため、JST (UTC+9) で日付を計算する
+_JST = timezone(timedelta(hours=9))
+
+
+def _today_jst() -> date:
+    """JST での今日の日付を返す。"""
+    return datetime.now(_JST).date()
 
 HABIT_DEFINITIONS = [
     {"emoji": "💪", "name": "筋トレ"},
@@ -61,7 +69,7 @@ def fetch_yesterday_habits() -> dict:
     notion = Client(auth=os.environ["NOTION_API_KEY"])
     db_id = os.environ["NOTION_DATABASE_ID"]
 
-    yesterday = date.today() - timedelta(days=1)
+    yesterday = _today_jst() - timedelta(days=1)
     iso = yesterday.isoformat()
 
     response = notion.databases.query(
@@ -122,7 +130,7 @@ def fetch_recent_days(n: int = 30) -> list[dict]:
     notion = Client(auth=os.environ["NOTION_API_KEY"])
     db_id = os.environ["NOTION_DATABASE_ID"]
 
-    since = (date.today() - timedelta(days=n)).isoformat()
+    since = (_today_jst() - timedelta(days=n)).isoformat()
 
     response = notion.databases.query(
         database_id=db_id,
