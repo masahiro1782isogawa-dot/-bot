@@ -2,9 +2,10 @@ name: 習慣レポート自動送信
 
 on:
   schedule:
-    # 毎日 07:00 JST (= 22:00 UTC 前日)
-    - cron: '0 22 * * *'
-  # GitHub UI / API から手動実行可能
+    # 毎日 06:30 JST (= 21:30 UTC) に起動
+    # GitHub Actions のcronは最大30分遅延する仕様のため、
+    # 目標到着時刻（7:00 JST）の30分前に設定して余裕を持たせる。
+    - cron: '30 21 * * *'
   workflow_dispatch:
 
 jobs:
@@ -25,6 +26,18 @@ jobs:
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
+
+      # Playwright の Chromium ブラウザをキャッシュする。
+      # キャッシュがない初回は ~200MB のダウンロードが発生するが、
+      # 2回目以降はキャッシュから復元されるため 8〜10分 → 約1分に短縮できる。
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
 
       - name: Install Playwright Chromium
         run: playwright install chromium --with-deps
