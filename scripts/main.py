@@ -6,9 +6,11 @@
   2. 集計・AI フィードバック生成
   3. HTML → PNG レンダリング
   4. Slack へ投稿
+  5. 一時 PNG ファイルを削除（finally で保証）
 """
 
 import logging
+import os
 import sys
 
 from fetch_notion import fetch_yesterday_habits, fetch_recent_days
@@ -27,32 +29,47 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     logger.info("=== 習慣レポート生成開始 ===")
 
-    logger.info("Step 1: Notion からデータ取得中...")
-    notion_data = fetch_yesterday_habits()
-    recent_days = fetch_recent_days(n=30)
-    logger.info(
-        "取得完了: %s (%d 件の習慣)",
-        notion_data["target_date"],
-        len(notion_data["habits"]),
-    )
+    try:
+        logger.info("Step 1: Notion からデータ取得中...")
+        notion_data = fetch_yesterday_habits()
+        recent_days = fetch_recent_days(n=30)
+        logger.info(
+            "取得完了: %s (%d 件の習慣)",
+            notion_data["target_date"],
+            len(notion_data["habits"]),
+        )
 
-    logger.info("Step 2: 集計 & AI フィードバック生成中...")
-    report_data = build_report_data(notion_data, recent_days)
-    logger.info(
-        "達成率: %d%%, 連続: %d日, 週間スコア: %d (%s)",
-        report_data["report"]["score"],
-        report_data["report"]["streak"],
-        report_data["report"]["weekly_score"],
-        report_data["report"]["weekly_rank"],
-    )
+        logger.info("Step 2: 集計 & AI フィードバック生成中...")
+        report_data = build_report_data(notion_data, recent_days)
+        logger.info(
+            "達成率: %d%%, 連続: %d日, 週間スコア: %d (%s)",
+            report_data["report"]["score"],
+            report_data["report"]["streak"],
+            report_data["report"]["weekly_score"],
+            report_data["report"]["weekly_rank"],
+        )
 
-    logger.info("Step 3: PNG 画像レンダリング中...")
-    image_path = render_report_image(report_data)
-    logger.info("画像生成完了: %s", image_path)
+        logger.info("Step 3: PNG 画像レンダリング中...")
+        image_path = render_report_image(report_data)
+        logger.info("画像生成完了: %s", image_path)
 
-    logger.info("Step 4: Slack へ投稿中...")
-    permalink = send_report_image(image_path, notion_data["target_date"])
-    logger.info("投稿完了: %s", permalink)
+        logger.info("Step 4: Slack へ投稿中...")
+        try:
+            permalink = send_report_image(image_path, notion_data["target_date"])
+            logger.info("投稿完了: %s", permalink)
+        finally:
+            # Slack 投稿の成否にかかわらず一時 PNG を削除する
+            if os.path.exists(image_path):
+                os.unlink(image_path)
+                logger.info("一時 PNG ファイルを削除しました: %s", image_path)
+
+    except ValueError as e:
+        # Notion にレコードが存在しない日（習慣未記録）
+        logger.error("データ取得エラー: %s", e)
+        raise SystemExit(1) from e
+    except Exception as e:
+        logger.exception("予期しないエラーが発生しました: %s", e)
+        raise SystemExit(1) from e
 
     logger.info("=== 習慣レポート生成完了 ===")
 

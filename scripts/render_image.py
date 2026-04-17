@@ -39,7 +39,13 @@ def html_to_png(html: str, output_path: str | None = None) -> str:
         output_path: 保存先パス。None の場合は一時ファイルを生成する。
     Returns:
         保存した PNG ファイルの絶対パス
+
+    Notes:
+        wait_until="networkidle" は Google Fonts / Tailwind CDN の読み込みを待つため
+        ネットワーク遅延時に長時間ブロックするリスクがある。
+        "domcontentloaded" + 短い固定待機に変更し、外部リソース依存を緩和する。
     """
+    created_tmp_png = output_path is None
     if output_path is None:
         fd, output_path = tempfile.mkstemp(suffix=".png", prefix="habit_report_")
         os.close(fd)
@@ -56,12 +62,20 @@ def html_to_png(html: str, output_path: str | None = None) -> str:
             page = browser.new_page(
                 viewport={"width": CARD_WIDTH + 48, "height": 900},
             )
-            page.goto(f"file://{tmp_html}", wait_until="networkidle")
+            # networkidle → domcontentloaded に変更。
+            # フォント読み込みの完了を待つために短い固定待機を追加する。
+            page.goto(f"file://{tmp_html}", wait_until="domcontentloaded")
+            page.wait_for_timeout(800)
 
             # カード要素のみをクリップしてスクリーンショット
             card = page.locator(".card-root")
             card.screenshot(path=output_path)
             browser.close()
+    except Exception:
+        # 失敗時は生成した一時 PNG も削除してリークを防ぐ
+        if created_tmp_png and os.path.exists(output_path):
+            os.unlink(output_path)
+        raise
     finally:
         os.unlink(tmp_html)
 

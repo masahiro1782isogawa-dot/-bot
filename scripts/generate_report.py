@@ -186,8 +186,12 @@ def _calc_streak(recent_days: list[dict]) -> int:
 
 
 def _calc_weekly(recent_days: list[dict]) -> tuple[int, str]:
-    """今週（月曜〜昨日）の週間スコアとランクを返す。"""
+    """
+    今週（月曜〜昨日）の週間スコアとランクを返す。
+    基準: yesterday を含む週の月曜日。_build_week_dots と同じ基準日を使う。
+    """
     yesterday = _today_jst() - timedelta(days=1)
+    # yesterday が属する週の月曜日（today ではなく yesterday 基準で統一）
     this_monday = yesterday - timedelta(days=yesterday.weekday())
 
     this_week = [e for e in recent_days if this_monday <= e["date"] <= yesterday]
@@ -202,9 +206,14 @@ def _calc_weekly(recent_days: list[dict]) -> tuple[int, str]:
 
 
 def _build_week_dots(recent_days: list[dict]) -> list[dict]:
+    """
+    週ドットを生成する。
+    基準: yesterday を含む週の月曜日（_calc_weekly と同じ基準日）。
+    today 基準にすると月曜日の朝に週全体が「未来」ドットになるバグを修正。
+    """
     yesterday = _today_jst() - timedelta(days=1)
-    today = _today_jst()
-    monday = today - timedelta(days=today.weekday())
+    # yesterday が属する週の月曜日（today ではなく yesterday 基準で統一）
+    monday = yesterday - timedelta(days=yesterday.weekday())
     recent_map = {e["date"]: e["done_ratio"] for e in recent_days}
 
     dots = []

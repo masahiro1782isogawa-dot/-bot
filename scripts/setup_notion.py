@@ -48,9 +48,15 @@ def create_habit_database(api_key: str, page_id: str) -> str:
 
 if __name__ == "__main__":
     api_key = os.environ.get("NOTION_API_KEY")
+    page_id = os.environ.get("NOTION_PAGE_ID")
+
     if not api_key:
         print("エラー: NOTION_API_KEY 環境変数が設定されていません。")
         sys.exit(1)
 
-    page_id = "33bd3c6cf76e80c98279cd69e518a84a"
+    if not page_id:
+        print("エラー: NOTION_PAGE_ID 環境変数が設定されていません。")
+        print("使い方: NOTION_PAGE_ID=<ページID> python setup_notion.py")
+        sys.exit(1)
+
     create_habit_database(api_key, page_id)
