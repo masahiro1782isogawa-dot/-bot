@@ -2,21 +2,24 @@
 習慣データを集計し、レポートデータを構築するモジュール。
 
 設計方針:
-  - AI（Gemini）は 1回の呼び出し で coaching（points + action）と quote を同時生成する。
-    → 翻訳コールや ZenQuotes 依存をなくし、API呼び出し回数を最小化。
-  - Gemini の system_instruction に専門コーチペルソナ＋知識を埋め込む。
-    → プロンプトに知識ファイルを丸ごと注入する方式は廃止（Geminiが指示と資料を混同するため）。
-  - headline・greeting・score・streak は決定論的に生成し、出力を安定させる。
+  - Gemini は「名言 quote + 学び tips」を 1 リクエストで生成（無料枠の回数・バーストを抑える）。
+  - 学びは habit_knowledge 参照。達成状況はプロンプトに含めない。
+  - 失敗時は名言は静的リスト、学びは habit_knowledge から日付で決定論的に選択。
+  - headline・greeting・score・streak のうち greeting はヘッダー用（スコア帯で変化）。
 
 スコア計算ルール:
   - 1習慣 = 20点（5習慣 × 20点 = 100点満点）
   - 達成(done) → 20点 / スキップ(skip) → 0点
 """
 
+from __future__ import annotations
+
 import json
 import os
+import re
 import time
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 from google import genai
 from google.genai import types
@@ -31,85 +34,203 @@ RANK_THRESHOLDS = [
     (85, "A"),
     (70, "B"),
     (50, "C"),
-    (0,  "D"),
+    (0, "D"),
 ]
 
 POINTS_PER_HABIT = 20
 
-# ──────────────────────────────────────────────
-# Gemini system_instruction
-# 専門コーチペルソナ＋各習慣の核心知識＋出力規則を一箇所に集約する。
-# ここを変えるだけでフィードバック品質が変わる。
-# ──────────────────────────────────────────────
-_COACHING_SYSTEM_INSTRUCTION = """\
-あなたは習慣形成・健康・メンタルの専門コーチです。
-ユーザーの昨日の習慣達成状況を見て、プロフェッショナルなフィードバックを生成してください。
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_HABIT_KNOWLEDGE_DIR = _REPO_ROOT / "habit_knowledge"
 
-■ 各習慣の専門知識（必ずこの知識を活かした具体的なコメントをしてください）
+_FRONTMATTER_RE = re.compile(r"^---\s*\r?\n.*?\r?\n---\s*\r?\n", re.DOTALL)
+_TIP_LINE_RE = re.compile(
+    r"^\s*(?:[-*・●]|\d+[.、\)])\s*(.+?)\s*$",
+)
 
-💪筋トレ
-・超回復に48〜72時間必要。毎日同じ部位は逆効果
-・プログレッシブオーバーロード（負荷の漸進）が筋成長の必須条件
-・運動後30〜60分以内のタンパク質摂取が筋タンパク質合成を最大化
-・気乗りしない日でも5分だけ動くことで継続の価値がある（最小有効量の原則）
-
-📓ジャーナル
-・感情を言語化するだけで扁桃体の興奮が抑制される（アフェクト・ラベリング）
-・「うまくいったこと3つ」を書く手法が最もエビデンスが高い（ハーバード研究）
-・5分・1文でも十分な心理的効果がある
-・フリーライティングでワーキングメモリを解放できる
-
-🧘瞑想
-・8週間継続で前頭前皮質が肥厚する（MRI研究で確認）
-・4-7-8呼吸法（吸4秒→止7秒→吐8秒）で副交感神経を即座に活性化
-・ラベリング法（「考えている」とラベルを貼り呼吸に戻る）で雑念に対処
-・特定の場所・時間に紐づけることで習慣化が3倍速くなる
-
-📚勉強
-・間隔反復（スペーシング効果）で長期記憶定着が2〜3倍向上
-・テスト効果：読む・聞くより「思い出す」練習が記憶定着率40%高い
-・就寝前学習が海馬→皮質への記憶転送を最も促進する
-・25分集中→5分休憩のポモドーロ・テクニックが集中の最適解
-
-🌟イメージング（ビジュアライゼーション）
-・動作をイメージするだけで実際の動作と同じ神経回路が活性化（EMG研究確認）
-・視覚だけでなく体感・感情・音を含めた多感覚イメージが最も効果的
-・1人称視点でイメージすると神経活性化がより強い
-・結果だけでなくプロセス（困難を乗り越える場面）もイメージすることが重要
-
-■ フィードバック生成の規則
-
-1. 達成した習慣への点（points[0]）
-   → その習慣の生理学・心理学的価値を具体的に言語化する
-   → 「よく頑張りました」等の一般的称賛は禁止
-   → 例：「筋トレ後の超回復で今夜成長ホルモンが分泌されます」
-
-2. スキップした習慣への点（points[1]）
-   → 自責させず、超最小限の具体的な次アクションを提示する
-   → 「頑張りましょう」等の常套句は禁止
-   → 例：「明日は呼吸3回だけでも瞑想は成立します」
-
-3. 今日のaction
-   → 明日実行できる最も重要な具体的行動を1つだけ
-
-4. quote（今日の名言）
-   → 習慣・自己成長・継続に関連した日本語の実在する名言または格言
-   → 英語は厳禁。必ず日本語で
-
-■ 出力形式（JSONのみ。マークダウン・コードブロック不要）
-
-{
-  "points": [
-    "達成習慣への専門的コメント（40字以内）",
-    "スキップ習慣へのセルフコンパッション＋最小アクション（40字以内）"
-  ],
-  "action": "今日のaction ▶ 具体的な1アクション（50字以内）",
-  "quote": {
-    "text": "日本語の名言（50字以内）",
-    "author": "著者名"
-  }
+# 知識ファイルが空・欠落のときの最小フォールバック（称賛・励まし文ではない）
+_EMBEDDED_TIPS: dict[str, list[str]] = {
+    "筋トレ": [
+        "同一部位の直後48〜72時間は合成・炎症のバランスが重要で、分割と睡眠が回復の鍵になりやすい。",
+        "漸進過負荷は「重量だけ」ではなくセット・回数・RIRのいずれかを週次で明文化するとブレにくい。",
+    ],
+    "ジャーナル": [
+        "感情ラベリングは短い語で足りる。長文より「名前→身体感覚→次の一手」の順が実務で扱いやすい。",
+        "書く目的を「正しさ」ではなく「観測」に置くと、欠損日が出てもデータとして復帰しやすい。",
+    ],
+    "瞑想": [
+        "注意が逸れたら戻る回数が刺激。静坐は椅子でも可で、首肩代償を避けるほうが継続率に効くことが多い。",
+        "延長呼気は副交感系へ働きかけやすい。数字固定より「吐くほうを長く」が運用しやすい。",
+    ],
+    "勉強": [
+        "分散学習と検索練習は長期保持で再読より優位になりやすい、というエビデンスの整理が強い。",
+        "インターリービングは当日の点数は下がることがあるが、区別課題で有利になりやすい。",
+    ],
+    "イメージング": [
+        "プロセス想像（障害対処まで）は自己効力感の変化が出やすいという報告がある。",
+        "運動イメージは実動作に近い皮質活動が示され、補助刺激として位置づけられる。",
+    ],
 }
+
+_REPORT_AI_SYSTEM_INSTRUCTION = """\
+あなたは習慣レポート用の JSON を 1 つだけ返す編集者です。
+
+■ 出力形式（JSON のみ。マークダウン・コードブロック禁止）
+{"quote":{"text":"50字以内の日本語の名言・格言","author":"著者名（日本語）"},"tips":[{"habit":"筋トレ","text":"120字以内"},{"habit":"ジャーナル","text":"..."},{"habit":"瞑想","text":"..."},{"habit":"勉強","text":"..."},{"habit":"イメージング","text":"..."}]}
+
+■ quote
+- 習慣・自己成長・継続・実践に関連する、実在が確認できる日本語の名言または格言
+- 英語は禁止
+
+■ tips
+- habit は 筋トレ, ジャーナル, 瞑想, 勉強, イメージング と完全一致で 5 件
+- ユーザーが渡す参考テキスト（habit_knowledge 抜粋）に沿う。要約・言い換え可。根拠のない捏造は禁止
+- 日付はバリエーション用のヒントのみ。「記録」「達成」「スキップ」「点数」には触れない
+- 称賛・慰め・叱責、「今日は〜」等の具体的行動指示は禁止
+
+■ 共通禁止
+- 達成状況に基づく称賛・慰め・指示
 """
+
+# 無料枠のトークン上限に寄りかからないよう、1習慣あたりの参考テキストは短めに切る
+_MAX_KNOWLEDGE_CHARS_FOR_PROMPT = 2800
+
+# 同一レポート内の API 回数を抑える: モデルは主に2種、各2試行まで
+_GEMINI_MODEL_CANDIDATES = ["gemini-2.0-flash", "gemini-1.5-flash"]
+_GEMINI_ATTEMPTS_PER_MODEL = 2
+
+
+def _strip_frontmatter(text: str) -> str:
+    text = text.lstrip("\ufeff")
+    return _FRONTMATTER_RE.sub("", text, count=1).lstrip("\r\n")
+
+
+def _parse_tips_from_markdown(text: str) -> list[str]:
+    """箇条書き・番号付き行を豆知識として抽出する。"""
+    tips: list[str] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        m = _TIP_LINE_RE.match(line)
+        if m:
+            body = m.group(1).strip()
+            if body:
+                tips.append(body)
+        elif not line.startswith("|") and not line.startswith("```"):
+            # 箇条書きでない短い行は本文が少ないファイル向けに拾う
+            if len(line) <= 200 and "http" not in line.lower():
+                tips.append(line)
+    # 重複除去（順序維持）
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for t in tips:
+        if t not in seen:
+            seen.add(t)
+            uniq.append(t)
+    return uniq
+
+
+def _read_text_file(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    return path.read_text(encoding="utf-8")
+
+
+def _load_habit_knowledge_sources(habit_name: str) -> str:
+    """
+    habit_knowledge/<習慣名>.md と habit_knowledge/<習慣名>/SKILL.md を結合する。
+    SKILL.md の YAML フロントマターは除去する。
+    """
+    base = _HABIT_KNOWLEDGE_DIR
+    chunks: list[str] = []
+    md_path = base / f"{habit_name}.md"
+    skill_path = base / habit_name / "SKILL.md"
+
+    md_raw = _read_text_file(md_path)
+    if md_raw:
+        chunks.append(_strip_frontmatter(md_raw))
+
+    skill_raw = _read_text_file(skill_path)
+    if skill_raw:
+        chunks.append(_strip_frontmatter(skill_raw))
+
+    return "\n\n".join(c for c in chunks if c.strip())
+
+
+def _tips_for_habit(habit_name: str) -> list[str]:
+    combined = _load_habit_knowledge_sources(habit_name)
+    tips = _parse_tips_from_markdown(combined)
+    if tips:
+        return tips
+    return list(_EMBEDDED_TIPS.get(habit_name, []))
+
+
+def _pick_tip_index(habit_name: str, target_date: date, n: int) -> int:
+    if n <= 0:
+        return 0
+    seed = target_date.toordinal() * 1315423911 + sum(ord(c) * (i + 1) for i, c in enumerate(habit_name))
+    return seed % n
+
+
+def _pro_tip_for_habit(habit_name: str, target_date: date) -> str:
+    tips = _tips_for_habit(habit_name)
+    if not tips:
+        return "この習慣の豆知識: habit_knowledge に .md または SKILL.md を追加してください。"
+    return tips[_pick_tip_index(habit_name, target_date, len(tips))]
+
+
+def _build_feedback_points_from_knowledge(
+    habits: list[dict],
+    target_date: date,
+) -> list[str]:
+    """各習慣1行・プロ向け豆知識のみ（絵文字＋名称＋本文）。Gemini 失敗時のフォールバックにも使う。"""
+    lines: list[str] = []
+    for h in habits:
+        name = h.get("name", "")
+        emoji = h.get("emoji", "")
+        tip = _pro_tip_for_habit(name, target_date)
+        prefix = f"{emoji} {name}".strip()
+        lines.append(f"{prefix} — {tip}" if prefix else tip)
+    return lines
+
+
+def _lines_from_tips_payload_strict(habits: list[dict], tips_payload: list) -> list[str] | None:
+    """
+    Gemini の tips を行に整形。5習慣すべてに対応する habit キーと非空 text があるときだけ成功。
+    """
+    name_to_text: dict[str, str] = {}
+    for item in tips_payload:
+        if not isinstance(item, dict):
+            continue
+        hname = str(item.get("habit", "")).strip()
+        body = str(item.get("text", "")).strip()
+        if hname and body:
+            name_to_text[hname] = body
+    lines: list[str] = []
+    for h in habits:
+        name = h.get("name", "")
+        emoji = h.get("emoji", "")
+        if not name or name not in name_to_text:
+            return None
+        text = name_to_text[name]
+        prefix = f"{emoji} {name}".strip()
+        lines.append(f"{prefix} — {text}" if prefix else text)
+    if len(lines) != len(habits):
+        return None
+    return lines
+
+
+def _build_knowledge_bundle_for_prompt(habit_name: str) -> str:
+    raw = _load_habit_knowledge_sources(habit_name)
+    if raw.strip():
+        if len(raw) > _MAX_KNOWLEDGE_CHARS_FOR_PROMPT:
+            return raw[:_MAX_KNOWLEDGE_CHARS_FOR_PROMPT] + "\n\n（以下略）"
+        return raw
+    embedded = _EMBEDDED_TIPS.get(habit_name, [])
+    if embedded:
+        return "\n".join(f"- {t}" for t in embedded)
+    return "（参考テキストなし。断定を避け、短い中立の学び1行に留める）"
+
 
 # ──────────────────────────────────────────────
 # フォールバック用の日本語名言リスト（31件）
@@ -267,92 +388,91 @@ def _build_greeting(score: int) -> str:
 
 
 # ──────────────────────────────────────────────
-# AI（Gemini）を使う箇所: coaching + quote を1回で生成
-#
-# 設計上の理由:
-#   - 翻訳コール・ZenQuotes コールを廃止し API 呼び出しを1回に集約
-#   - system_instruction で専門コーチペルソナを定義（プロンプトへの知識丸ごと注入より効果的）
-#   - max_output_tokens=500 で出力の切り捨てを防止
-#   - temperature=0.75 で具体性を保ちながらも毎日異なる内容を生成
+# AI（Gemini）: 名言 + 日替わり学びを 1 リクエストで生成
 # ──────────────────────────────────────────────
 
-def _generate_ai_content(
+
+def _generate_quote_and_daily_tips(
     habits: list[dict],
-    score: int,
-    streak: int,
     target_date: date,
-) -> dict:
+) -> tuple[dict, list[str]]:
     """
-    Gemini で coaching（points + action）と quote を同時生成する。
-    失敗時はプログラムで生成した静的フォールバックを返す。
+    quote と tips を 1 回の generate_content で取得する（日次 RPD を抑える）。
+    達成状況はプロンプトに含めない。失敗時は名言は静的リスト、学びは habit_knowledge の日付選択。
     """
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-
-    done_names = [h["name"] for h in habits if h["status"] == "done"]
-    skip_names = [h["name"] for h in habits if h["status"] == "skip"]
-    done_count = len(done_names)
-    total = len(habits)
-
-    habit_summary = "\n".join(
-        f"- {h['emoji']} {h['name']}: {'✓完了' if h['status'] == 'done' else 'スキップ'}"
-        + (f" （{h['detail']}）" if h["detail"] and h["detail"] != "未実施" else "")
-        for h in habits
-    )
+    blocks: list[str] = []
+    for h in habits:
+        hn = h.get("name", "")
+        if not hn:
+            continue
+        bundle = _build_knowledge_bundle_for_prompt(hn)
+        blocks.append(f"## {hn}\n{bundle}")
+    reference = "\n\n".join(blocks)
 
     user_message = (
-        f"昨日の習慣記録:\n{habit_summary}\n\n"
-        f"スコア: {score}点/100点（{done_count}/{total}達成）、連続達成日数: {streak}日"
+        f"日付（名言・学びのバリエーション用。達成記録やスコアとは無関係）: {target_date.isoformat()}\n\n"
+        "以下は各習慣の参考テキスト（habit_knowledge の抜粋）です。"
+        "tips はこの内容に基づき 5 件。quote は日本語の名言を 1 つ（参考テキストに合わせなくてよい）。\n\n"
+        f"{reference}"
     )
 
-    models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"]
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    max_attempt_idx = _GEMINI_ATTEMPTS_PER_MODEL - 1
 
-    for model in models:
-        for attempt in range(3):
+    for model in _GEMINI_MODEL_CANDIDATES:
+        for attempt in range(_GEMINI_ATTEMPTS_PER_MODEL):
             try:
-                print(f"Gemini API 呼び出し中（モデル: {model}, 試行: {attempt + 1}/3）...")
+                print(
+                    f"Gemini API（名言+学び 統合）モデル: {model}, "
+                    f"試行: {attempt + 1}/{_GEMINI_ATTEMPTS_PER_MODEL}..."
+                )
                 response = client.models.generate_content(
                     model=model,
                     contents=user_message,
                     config=types.GenerateContentConfig(
-                        system_instruction=_COACHING_SYSTEM_INSTRUCTION,
-                        temperature=0.75,
-                        max_output_tokens=500,
+                        system_instruction=_REPORT_AI_SYSTEM_INSTRUCTION,
+                        temperature=0.55,
+                        max_output_tokens=2000,
                         response_mime_type="application/json",
                     ),
                 )
                 result = json.loads(response.text)
-                # 必須キーが揃っているか確認
-                if (
-                    "points" in result
-                    and "action" in result
-                    and "quote" in result
-                    and isinstance(result["quote"], dict)
-                    and result["quote"].get("text")
-                    and result["quote"].get("author")
+                quote = result.get("quote")
+                tips_raw = result.get("tips")
+                if not (
+                    isinstance(quote, dict)
+                    and quote.get("text")
+                    and quote.get("author")
                 ):
-                    print(f"Gemini API 成功（モデル: {model}）")
-                    return result
-                print(f"Gemini API: 必須キー不足（{list(result.keys())}）。フォールバックへ")
-                break
+                    print(f"Gemini API: quote 不正（keys={list(result.keys())}）。リトライ/次モデルへ")
+                    break
+                if not isinstance(tips_raw, list):
+                    print(f"Gemini API: tips が配列ではない（{type(tips_raw)}）。リトライ/次モデルへ")
+                    break
+                lines = _lines_from_tips_payload_strict(habits, tips_raw)
+                if lines is None:
+                    print("Gemini API: tips の habit 名または text が不足。リトライ/次モデルへ")
+                    break
+                print(f"Gemini API 成功（名言+学び, モデル: {model}）")
+                return {"quote": {"text": quote["text"], "author": quote["author"]}}, lines
             except Exception as e:
-                if attempt < 2:
-                    wait = 10 * (2 ** attempt)
-                    print(f"Gemini API エラー（{model}, {attempt + 1}回目）: {e}。{wait}秒後リトライ...")
+                if attempt < max_attempt_idx:
+                    wait = 10 * (2**attempt)
+                    print(
+                        f"Gemini API エラー（名言+学び, {model}, {attempt + 1}回目）: {e}。"
+                        f"{wait}秒後リトライ..."
+                    )
                     time.sleep(wait)
                 else:
-                    print(f"Gemini API 失敗（{model} 全試行終了）: {e}")
-                    break
+                    print(f"Gemini API 失敗（名言+学び, {model} 全試行終了）: {e}")
 
-    # 全モデル失敗時のフォールバック
-    print("警告: Gemini API が全モデルで失敗しました。静的コンテンツで続行します。")
-    skip_text = f"{skip_names[0]}は明日5分だけ試してみましょう。" if skip_names else "今日も習慣を続けましょう。"
-    done_text = f"{done_names[0]}の継続が確実に身体・脳を変えています。" if done_names else "小さな一歩が積み重なっていきます。"
-    fallback_quote = _FALLBACK_QUOTES[target_date.toordinal() % len(_FALLBACK_QUOTES)]
-    return {
-        "points": [done_text, skip_text],
-        "action": f"今日のaction ▶ {skip_text if skip_names else '今日の習慣を1つ選んで実行する'}",
-        "quote": fallback_quote,
-    }
+    print(
+        "警告: Gemini API が名言+学びで全モデル失敗。"
+        "名言は静的リスト、学びは habit_knowledge から日付で選択します。"
+    )
+    fb_quote = _FALLBACK_QUOTES[target_date.toordinal() % len(_FALLBACK_QUOTES)]
+    fb_lines = _build_feedback_points_from_knowledge(habits, target_date)
+    return {"quote": fb_quote}, fb_lines
 
 
 # ──────────────────────────────────────────────
@@ -380,11 +500,9 @@ def build_report_data(notion_data: dict, recent_days: list[dict]) -> dict:
     week_dots = _build_week_dots(recent_days)
     done_count = sum(1 for h in habits if h["status"] == "done")
 
-    headline = _build_headline(done_count, len(habits), score)
     greeting = _build_greeting(score)
 
-    # coaching と quote を1回の Gemini 呼び出しで生成
-    ai_content = _generate_ai_content(habits, score, streak, target_date)
+    ai_quote, knowledge_points = _generate_quote_and_daily_tips(habits, target_date)
 
     return {
         "report": {
@@ -396,11 +514,11 @@ def build_report_data(notion_data: dict, recent_days: list[dict]) -> dict:
             "weekly_rank": weekly_rank,
             "habits": habits,
             "feedback": {
-                "headline": headline,
-                "points": ai_content.get("points", []),
-                "action": ai_content.get("action", ""),
+                "headline": "日替わりの豆知識（habit_knowledge ベース・記録とは無関係）",
+                "points": knowledge_points,
+                "action": "",
             },
-            "quote": ai_content.get("quote", _FALLBACK_QUOTES[0]),
+            "quote": ai_quote.get("quote", _FALLBACK_QUOTES[0]),
         },
         "done_count": done_count,
         "week_dots": week_dots,
