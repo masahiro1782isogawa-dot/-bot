@@ -25,9 +25,34 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# レポート生成〜Slack 投稿まで一連で必須（未設定だと途中で分かりにくいエラーになるのを防ぐ）
+_REQUIRED_ENV_VARS = (
+    "NOTION_API_KEY",
+    "NOTION_DATABASE_ID",
+    "GEMINI_API_KEY",
+    "SLACK_BOT_TOKEN",
+    "SLACK_CHANNEL_ID",
+)
+
+
+def _require_env_vars() -> None:
+    missing = [
+        name
+        for name in _REQUIRED_ENV_VARS
+        if not (os.environ.get(name) or "").strip()
+    ]
+    if missing:
+        logger.error(
+            "必須の環境変数が設定されていません: %s\n"
+            "GitHub Actions の Secrets、またはローカルでの export を確認してください。",
+            ", ".join(missing),
+        )
+        raise SystemExit(1)
+
 
 def main() -> None:
     logger.info("=== 習慣レポート生成開始 ===")
+    _require_env_vars()
 
     try:
         logger.info("Step 1: Notion からデータ取得中...")

@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import time
@@ -23,6 +24,8 @@ from pathlib import Path
 
 from google import genai
 from google.genai import types
+
+logger = logging.getLogger(__name__)
 
 # GitHub Actions は UTC 動作のため、JST (UTC+9) で日付を計算する
 _JST = timezone(timedelta(hours=9))
@@ -422,9 +425,11 @@ def _generate_quote_and_daily_tips(
     for model in _GEMINI_MODEL_CANDIDATES:
         for attempt in range(_GEMINI_ATTEMPTS_PER_MODEL):
             try:
-                print(
-                    f"Gemini API（名言+学び 統合）モデル: {model}, "
-                    f"試行: {attempt + 1}/{_GEMINI_ATTEMPTS_PER_MODEL}..."
+                logger.info(
+                    "Gemini API（名言+学び 統合）モデル: %s, 試行: %s/%s",
+                    model,
+                    attempt + 1,
+                    _GEMINI_ATTEMPTS_PER_MODEL,
                 )
                 response = client.models.generate_content(
                     model=model,
@@ -444,30 +449,43 @@ def _generate_quote_and_daily_tips(
                     and quote.get("text")
                     and quote.get("author")
                 ):
-                    print(f"Gemini API: quote 不正（keys={list(result.keys())}）。リトライ/次モデルへ")
+                    logger.info(
+                        "Gemini API: quote 不正（keys=%s）。リトライ/次モデルへ",
+                        list(result.keys()),
+                    )
                     break
                 if not isinstance(tips_raw, list):
-                    print(f"Gemini API: tips が配列ではない（{type(tips_raw)}）。リトライ/次モデルへ")
+                    logger.info(
+                        "Gemini API: tips が配列ではない（%s）。リトライ/次モデルへ",
+                        type(tips_raw).__name__,
+                    )
                     break
                 lines = _lines_from_tips_payload_strict(habits, tips_raw)
                 if lines is None:
-                    print("Gemini API: tips の habit 名または text が不足。リトライ/次モデルへ")
+                    logger.info(
+                        "Gemini API: tips の habit 名または text が不足。リトライ/次モデルへ"
+                    )
                     break
-                print(f"Gemini API 成功（名言+学び, モデル: {model}）")
+                logger.info("Gemini API 成功（名言+学び, モデル: %s）", model)
                 return {"quote": {"text": quote["text"], "author": quote["author"]}}, lines
             except Exception as e:
                 if attempt < max_attempt_idx:
                     wait = 10 * (2**attempt)
-                    print(
-                        f"Gemini API エラー（名言+学び, {model}, {attempt + 1}回目）: {e}。"
-                        f"{wait}秒後リトライ..."
+                    logger.warning(
+                        "Gemini API エラー（名言+学び, %s, %s回目）: %s。%s秒後リトライ...",
+                        model,
+                        attempt + 1,
+                        e,
+                        wait,
                     )
                     time.sleep(wait)
                 else:
-                    print(f"Gemini API 失敗（名言+学び, {model} 全試行終了）: {e}")
+                    logger.warning(
+                        "Gemini API 失敗（名言+学び, %s 全試行終了）: %s", model, e
+                    )
 
-    print(
-        "警告: Gemini API が名言+学びで全モデル失敗。"
+    logger.warning(
+        "Gemini API が名言+学びで全モデル失敗。"
         "名言は静的リスト、学びは habit_knowledge から日付で選択します。"
     )
     fb_quote = _FALLBACK_QUOTES[target_date.toordinal() % len(_FALLBACK_QUOTES)]
