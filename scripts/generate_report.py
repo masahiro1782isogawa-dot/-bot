@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
 import re
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -78,17 +79,19 @@ _REPORT_AI_SYSTEM_INSTRUCTION = """\
 あなたは習慣レポート用の JSON を 1 つだけ返す編集者です。
 
 ■ 出力形式（JSON のみ。マークダウン・コードブロック禁止）
-{"quote":{"text":"50字以内の日本語の名言・格言","author":"著者名（日本語）"},"tips":[{"habit":"筋トレ","text":"120字以内"},{"habit":"ジャーナル","text":"..."},{"habit":"瞑想","text":"..."},{"habit":"勉強","text":"..."},{"habit":"イメージング","text":"..."}]}
+{"quote":{"text":"50字以内の日本語の名言・格言","author":"著者名（日本語）"},"tip":{"habit":"習慣名","text":"80〜120字"}}
 
 ■ quote
 - 習慣・自己成長・継続・実践に関連する、実在が確認できる日本語の名言または格言
 - 英語は禁止
 
-■ tips
-- habit は 筋トレ, ジャーナル, 瞑想, 勉強, イメージング と完全一致で 5 件
+■ tip
+- habit はユーザーが渡す 1 つの習慣名と完全一致
+- text は 80〜120字、日本語のみ、箇条書き1行として使える文章にする
+- 専門用語・難しい言葉は避け、中学生でもわかる言葉を使う
+- すぐ実行できる具体的な行動を 1 つ入れ、前向きに短く締める
 - ユーザーが渡す参考テキスト（habit_knowledge 抜粋）に沿う。要約・言い換え可。根拠のない捏造は禁止
 - 日付はバリエーション用のヒントのみ。「記録」「達成」「スキップ」「点数」には触れない
-- 称賛・慰め・叱責、「今日は〜」等の具体的行動指示は禁止
 
 ■ 共通禁止
 - 達成状況に基づく称賛・慰め・指示
@@ -182,45 +185,32 @@ def _pro_tip_for_habit(habit_name: str, target_date: date) -> str:
     return tips[_pick_tip_index(habit_name, target_date, len(tips))]
 
 
-def _build_feedback_points_from_knowledge(
-    habits: list[dict],
+def _build_feedback_point_from_knowledge(
+    habit: dict,
     target_date: date,
 ) -> list[str]:
-    """各習慣1行・プロ向け豆知識のみ（絵文字＋名称＋本文）。Gemini 失敗時のフォールバックにも使う。"""
-    lines: list[str] = []
-    for h in habits:
-        name = h.get("name", "")
-        emoji = h.get("emoji", "")
-        tip = _pro_tip_for_habit(name, target_date)
-        prefix = f"{emoji} {name}".strip()
-        lines.append(f"{prefix} — {tip}" if prefix else tip)
-    return lines
+    """選択された1習慣のみを1行で返す（Gemini失敗時フォールバック）。"""
+    name = habit.get("name", "")
+    emoji = habit.get("emoji", "")
+    tip = _pro_tip_for_habit(name, target_date)
+    prefix = f"{emoji} {name}".strip()
+    return [f"{prefix} — {tip}" if prefix else tip]
 
 
-def _lines_from_tips_payload_strict(habits: list[dict], tips_payload: list) -> list[str] | None:
+def _line_from_tip_payload_strict(habit: dict, tip_payload: dict) -> list[str] | None:
     """
-    Gemini の tips を行に整形。5習慣すべてに対応する habit キーと非空 text があるときだけ成功。
+    Gemini の tip を行に整形。選択した習慣名と非空 text があるときだけ成功。
     """
-    name_to_text: dict[str, str] = {}
-    for item in tips_payload:
-        if not isinstance(item, dict):
-            continue
-        hname = str(item.get("habit", "")).strip()
-        body = str(item.get("text", "")).strip()
-        if hname and body:
-            name_to_text[hname] = body
-    lines: list[str] = []
-    for h in habits:
-        name = h.get("name", "")
-        emoji = h.get("emoji", "")
-        if not name or name not in name_to_text:
-            return None
-        text = name_to_text[name]
-        prefix = f"{emoji} {name}".strip()
-        lines.append(f"{prefix} — {text}" if prefix else text)
-    if len(lines) != len(habits):
+    if not isinstance(tip_payload, dict):
         return None
-    return lines
+    expected_name = str(habit.get("name", "")).strip()
+    actual_name = str(tip_payload.get("habit", "")).strip()
+    text = str(tip_payload.get("text", "")).strip()
+    if not expected_name or expected_name != actual_name or not text:
+        return None
+    emoji = habit.get("emoji", "")
+    prefix = f"{emoji} {expected_name}".strip()
+    return [f"{prefix} — {text}" if prefix else text]
 
 
 def _build_knowledge_bundle_for_prompt(habit_name: str) -> str:
@@ -403,20 +393,20 @@ def _generate_quote_and_daily_tips(
     quote と tips を 1 回の generate_content で取得する（日次 RPD を抑える）。
     達成状況はプロンプトに含めない。失敗時は名言は静的リスト、学びは habit_knowledge の日付選択。
     """
-    blocks: list[str] = []
-    for h in habits:
-        hn = h.get("name", "")
-        if not hn:
-            continue
-        bundle = _build_knowledge_bundle_for_prompt(hn)
-        blocks.append(f"## {hn}\n{bundle}")
-    reference = "\n\n".join(blocks)
+    valid_habits = [h for h in habits if h.get("name")]
+    if not valid_habits:
+        fb_quote = _FALLBACK_QUOTES[target_date.toordinal() % len(_FALLBACK_QUOTES)]
+        return {"quote": fb_quote}, ["今日の学びを生成できませんでした。習慣名を確認してください。"]
+    selected_habit = random.choice(valid_habits)
+    selected_name = selected_habit["name"]
+    reference = _build_knowledge_bundle_for_prompt(selected_name)
 
     user_message = (
         f"日付（名言・学びのバリエーション用。達成記録やスコアとは無関係）: {target_date.isoformat()}\n\n"
-        "以下は各習慣の参考テキスト（habit_knowledge の抜粋）です。"
-        "tips はこの内容に基づき 5 件。quote は日本語の名言を 1 つ（参考テキストに合わせなくてよい）。\n\n"
-        f"{reference}"
+        f"今回は次の1項目のみを対象に、学びを1件だけ作ってください: {selected_name}\n\n"
+        "以下は対象習慣の参考テキスト（habit_knowledge の抜粋）です。"
+        "tip はこの内容に基づき 1 件。quote は日本語の名言を 1 つ（参考テキストに合わせなくてよい）。\n\n"
+        f"## {selected_name}\n{reference}"
     )
 
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
@@ -443,7 +433,7 @@ def _generate_quote_and_daily_tips(
                 )
                 result = json.loads(response.text)
                 quote = result.get("quote")
-                tips_raw = result.get("tips")
+                tip_raw = result.get("tip")
                 if not (
                     isinstance(quote, dict)
                     and quote.get("text")
@@ -454,16 +444,16 @@ def _generate_quote_and_daily_tips(
                         list(result.keys()),
                     )
                     break
-                if not isinstance(tips_raw, list):
+                if not isinstance(tip_raw, dict):
                     logger.info(
-                        "Gemini API: tips が配列ではない（%s）。リトライ/次モデルへ",
-                        type(tips_raw).__name__,
+                        "Gemini API: tip がオブジェクトではない（%s）。リトライ/次モデルへ",
+                        type(tip_raw).__name__,
                     )
                     break
-                lines = _lines_from_tips_payload_strict(habits, tips_raw)
+                lines = _line_from_tip_payload_strict(selected_habit, tip_raw)
                 if lines is None:
                     logger.info(
-                        "Gemini API: tips の habit 名または text が不足。リトライ/次モデルへ"
+                        "Gemini API: tip の habit 名または text が不正。リトライ/次モデルへ"
                     )
                     break
                 logger.info("Gemini API 成功（名言+学び, モデル: %s）", model)
@@ -486,10 +476,10 @@ def _generate_quote_and_daily_tips(
 
     logger.warning(
         "Gemini API が名言+学びで全モデル失敗。"
-        "名言は静的リスト、学びは habit_knowledge から日付で選択します。"
+        "名言は静的リスト、学びは選択した1習慣の habit_knowledge から日付で選択します。"
     )
     fb_quote = _FALLBACK_QUOTES[target_date.toordinal() % len(_FALLBACK_QUOTES)]
-    fb_lines = _build_feedback_points_from_knowledge(habits, target_date)
+    fb_lines = _build_feedback_point_from_knowledge(selected_habit, target_date)
     return {"quote": fb_quote}, fb_lines
 
 
@@ -532,7 +522,7 @@ def build_report_data(notion_data: dict, recent_days: list[dict]) -> dict:
             "weekly_rank": weekly_rank,
             "habits": habits,
             "feedback": {
-                "headline": "日替わりの豆知識（habit_knowledge ベース・記録とは無関係）",
+                "headline": "今日の学び（5項目からランダムで1件）",
                 "points": knowledge_points,
                 "action": "",
             },
